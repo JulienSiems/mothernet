@@ -118,7 +118,7 @@ def get_prior_config(max_features=100, n_samples=1024+128):
 
     dataloader = {
         "batch_size": 8,
-        "num_steps": 8192,
+        "num_steps": 1000,
         'min_eval_pos': 2}
 
     prior['boolean'] = {

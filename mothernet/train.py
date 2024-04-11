@@ -56,7 +56,7 @@ def train_epoch(model, aggregate_k_gradients, using_dist, scaler, dl, device, op
             if batch % aggregate_k_gradients == aggregate_k_gradients - 1:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 1., foreach=True)
                 optimizer.step()
-                optimizer.zero_grad()
+                optimizer.zero_grad(set_to_none=True)
 
             if torch.isnan(loss):
                 raise ValueError("NAN loss encountered")

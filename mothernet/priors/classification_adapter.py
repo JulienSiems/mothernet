@@ -140,7 +140,28 @@ class ClassificationAdapter:
 
         # Categorical features
         categorical_features = []
-        if random.random() < self.h['categorical_feature_p']:
+        '''
+        if True: # random.random() < self.h['categorical_feature_p']:
+            p = torch.rand(x.shape[1], device=x.device).unsqueeze(1) # Sample per dataset
+            num_unique_features = torch.distributions.gamma.Gamma(1, 1 / 10).rsample(
+                (x.shape[1], x.shape[2])).round().clamp(min=2).to(device=x.device)  # python gammavariate used 1/beta in python^
+            # Create a MulticlassRank object
+            m = MulticlassRank(num_unique_features, ordered_p=0.3)
+
+            # Generate an array of random numbers for each feature in `x`
+            random_values = torch.rand((x.shape[1], x.shape[2]), device=x.device)
+
+            # Get a boolean mask for features where the random value is less than `p`
+            mask = random_values < p
+
+            # Apply the `MulticlassRank` transformation to the selected features
+            x[:, mask] = m(x[:, mask])
+
+            # Get the indices of the selected features and add them to `categorical_features`
+            categorical_features.extend(torch.where(mask)[0].tolist())
+        categorical_features = []
+        '''
+        if True: # random.random() < self.h['categorical_feature_p']:  # --> Todo: Remove for loops
             p = random.random()
             for col in range(x.shape[2]):
                 num_unique_features = max(round(random.gammavariate(1, 10)), 2)
