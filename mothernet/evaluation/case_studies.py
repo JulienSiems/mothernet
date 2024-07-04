@@ -79,6 +79,40 @@ def plot_shape_functions(model_string: str, dataset: str):
 
 
 def toy_datasets():
+    # Dataset with increasing number of categorical features
+    n_features = 20
+    n_splits = 3
+    column_names = [fr'$x_{i}$' for i in range(n_features)]
+
+    num_categorical_features = []
+    test_roc_auc = []
+    model = []
+    for i in range(2, n_features):
+        X, y = linear_correlated_logistic_regression(
+            n_features=n_features, n_tasks=1, n_datapoints=500, sampling_correlation=0.0)
+        for j in range(i):
+            X[:, j] = (X[:, j] * 5).astype(np.int32)
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+        results = eval_gamformer_and_ebm('logistic regression', X_train, y_train, X_test, y_test,
+                                         n_splits=n_splits, column_names=column_names, record_shape_functions=True)
+        # Add EBM results
+        num_categorical_features.extend([i] * n_splits)
+        test_roc_auc.extend(results[0]['test_node_gam_scores'])
+        model.extend(['EBM'] * n_splits)
+
+        num_categorical_features.extend([i] * n_splits)
+        test_roc_auc.extend(results[1]['test_node_gam_scores'])
+        model.extend(['GAMformer'] * n_splits)
+
+    df = pd.DataFrame.from_dict(
+        {'Num. Cat. Features': num_categorical_features, 'ROC AUC': test_roc_auc, 'Model': model})
+
+    import seaborn as sns
+    sns.lineplot(x='Num. Cat. Features', y='ROC AUC', hue='Model', data=df)
+    plt.tight_layout()
+    plt.show()
+
     # logistic regression
     column_names = [r'$x_1$', r'$x_2$', r'$x_3$']
     X, y = linear_correlated_logistic_regression(
@@ -105,6 +139,7 @@ def toy_datasets():
                                    data_density=results[0]['data_density'][0],
                                    feature_names=column_names, X_train=pd.DataFrame(X_train, columns=column_names),
                                    dataset_name='polynomial_regression')
+
 
 
 if __name__ == '__main__':
