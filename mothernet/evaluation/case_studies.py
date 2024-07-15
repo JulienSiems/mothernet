@@ -87,11 +87,20 @@ def toy_datasets():
     num_categorical_features = []
     test_roc_auc = []
     model = []
+    shuffle = False
     for i in range(2, n_features):
         X, y = linear_correlated_logistic_regression(
             n_features=n_features, n_tasks=1, n_datapoints=500, sampling_correlation=0.0)
         for j in range(i):
-            X[:, j] = (X[:, j] * 5).astype(np.int32)
+            x_shuffle = (X[:, j] * 5).astype(np.int32)
+            if shuffle:
+                np.random.shuffle(x_shuffle)
+                X[:, j] = x_shuffle
+            else:
+                values = np.unique(x_shuffle)
+                np.random.shuffle(values)
+                replace_dict = {k: v for k, v in zip(np.unique(x_shuffle), values)}
+                X[:, j] = np.array(list(map(lambda k: replace_dict[k], x_shuffle.tolist())))
 
         X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
         results = eval_gamformer_and_ebm('logistic regression', X_train, y_train, X_test, y_test,
