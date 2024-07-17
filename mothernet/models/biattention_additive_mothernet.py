@@ -47,7 +47,7 @@ class BiAttentionMotherNetAdditive(nn.Module):
         nhid = emsize * nhid_factor
         self.y_encoder = y_encoder_layer
         if categorical_embedding:
-            self.categorical_embedding = OneHotAndLinear(num_classes=2, emsize=emsize)
+            self.categorical_encoder = Linear(num_features=n_bins + (fourier_features + 1 if fourier_features else 0), emsize=emsize, replace_nan_by_zero=True)
         self.low_rank_weights = low_rank_weights  # ignored for now
         self.weight_embedding_rank = weight_embedding_rank  # ignored for now
         self.fourier_features = fourier_features
