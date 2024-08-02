@@ -62,7 +62,7 @@ def plot_shape_functions(model_string: str, dataset: str):
     y_test = data['y_test']
 
     # X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, random_state=42, train_size=0.95)
-    results = eval_gamformer_and_ebm(dataset, X_train, y_train, X_test, y_test, n_splits=30,
+    results = eval_gamformer_and_ebm(dataset, X_train, y_train, X_test, y_test, n_splits=10,
                                      column_names=data['X_train'].columns, record_shape_functions=True)
     time_stamp = datetime.now().strftime("%m_%d_%Y_%H_%M_%S")
     os.makedirs(f'output/{dataset}', exist_ok=True)
@@ -87,8 +87,8 @@ def toy_datasets():
     num_categorical_features = []
     test_roc_auc = []
     model = []
-    shuffle = False
-    for i in range(2, n_features):
+    shuffle = True
+    for i in range(2, n_features + 1):
         X, y = linear_correlated_logistic_regression(
             n_features=n_features, n_tasks=1, n_datapoints=500, sampling_correlation=0.0)
         for j in range(i):
@@ -150,11 +150,10 @@ def toy_datasets():
                                    dataset_name='polynomial_regression')
 
 
-
 if __name__ == '__main__':
     model_string = "baam_nsamples500_numfeatures10_04_07_2024_17_04_53_epoch_1780.cpkt"
     # Run Toy Datasets
-    toy_datasets()
+    # toy_datasets()
     # Shape Function Visualization
-    for dataset in ['MIMIC2', 'MIMIC3', 'ADULT', 'SUPPORT2']:
+    for dataset in ['CALIFORNIAHOUSING', 'MIMIC2', 'MIMIC3', 'ADULT', 'SUPPORT2']:
         plot_shape_functions(model_string, dataset)
