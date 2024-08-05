@@ -6,19 +6,19 @@ from datetime import datetime
 
 import numpy as np
 import torch
-from interpret.glassbox import ExplainableBoostingClassifier
+from interpret.glassbox import ExplainableBoostingClassifier, ExplainableBoostingRegressor
 from pygam import LinearGAM, LogisticGAM
 from sklearn.compose import ColumnTransformer
 from sklearn.ensemble import RandomForestClassifier
 from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import roc_auc_score
-from sklearn.model_selection import StratifiedShuffleSplit, cross_validate
+from sklearn.metrics import roc_auc_score, root_mean_squared_error
+from sklearn.model_selection import StratifiedShuffleSplit, cross_validate, ShuffleSplit
 from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OneHotEncoder, FunctionTransformer, StandardScaler, OrdinalEncoder
 from xgboost import XGBClassifier
 
 from mothernet.evaluation.node_gam_data import DATASETS
-from mothernet.prediction import MotherNetAdditiveClassifier
+from mothernet.prediction import MotherNetAdditiveClassifier, MotherNetAdditiveRegressor
 from mothernet.utils import get_mn_model
 
 
@@ -66,7 +66,75 @@ def format_n(x):
     return "{0:.3f}".format(x)
 
 
-def process_model(clf, name, X, y, X_test, y_test, n_splits=3, test_size=0.25, n_jobs=None, column_names=None,
+def process_regression_model(clf, name, X, y, X_test, y_test, n_splits=3, test_size=0.05, n_jobs=None, column_names=None,
+                             train_size=None, record_shape_functions=False):
+    # Evaluate model
+    train_size=10000
+    num_features = X.shape[1]
+    ss = ShuffleSplit(n_splits=n_splits, test_size=test_size, train_size=train_size, random_state=1337)
+    print('Fitting', name)
+    scores = cross_validate(
+        clf, X.to_numpy(), y.to_numpy(), cv=ss,
+        n_jobs=n_jobs, return_estimator=True,
+        scoring='neg_mean_squared_error'  # Use negative MSE for scoring
+    )
+    n_train_points = X.shape[0] * (1 - test_size)
+    n_test_points = X.shape[0] * test_size
+    record = dict()
+    start = time.time()
+    record['model_name'] = name
+    record['n_train_points'] = n_train_points
+    record['n_test_points'] = n_test_points
+    record['fit_time_mean'] = format_n(np.mean(scores['fit_time']))
+    record['fit_time_std'] = format_n(np.std(scores['fit_time']))
+    record['test_score_mean'] = format_n(-np.mean(scores['test_score']))  # Convert back to positive MSE
+    record['test_score_std'] = format_n(np.std(scores['test_score']))
+    record['test_node_gam_scores'] = [
+        root_mean_squared_error(
+            y_test.to_numpy().flatten(),
+            estimator.predict(X_test.to_numpy()).flatten()) for estimator in scores['estimator']
+    ]
+    record['test_node_gam_bagging'] = root_mean_squared_error(
+        y_test.to_numpy().flatten(),
+        np.array([estimator.predict(X_test.to_numpy()).flatten() for estimator in scores['estimator']]).mean(axis=0))
+
+    if record_shape_functions:
+        if isinstance(clf, ExplainableBoostingClassifier) or isinstance(clf, ExplainableBoostingRegressor):
+            ebm_explanations = [estimator.explain_global() for estimator in scores['estimator']]
+            record['bin_edges'] = [
+                dict(zip(ebm_exp.feature_names,
+                         [feature['names'] for feature in ebm_exp._internal_obj['specific']])) for
+                ebm_exp in ebm_explanations
+            ]
+            record['w'] = [
+                dict(zip(ebm_exp.feature_names,
+                         [feature['scores'] for feature in ebm_exp._internal_obj['specific']])) for ebm_exp
+                in ebm_explanations
+            ]
+            record['data_density'] = [
+                dict(zip(ebm_exp.feature_names,
+                         [feature['density'] for feature in ebm_exp._internal_obj['specific']])) for ebm_exp
+                in ebm_explanations
+            ]
+        elif isinstance(clf, MotherNetAdditiveClassifier):
+            record['bin_edges'] = [dict(zip(column_names, scores['estimator'][i].bin_edges_)) for i in range(n_splits)]
+            record['w'] = [dict(zip(column_names, scores['estimator'][i].w_)) for i in range(n_splits)]
+        elif isinstance(clf, MotherNetAdditiveRegressor):
+            record['bin_edges'] = [dict(zip(column_names, scores['estimator'][i].bin_edges_)) for i in range(n_splits)]
+            record['w'] = [dict(zip(column_names, torch.tensor(
+                [scores['estimator'][i]._y_scaler.inverse_transform(scores['estimator'][i].w_[j]) for j in range(num_features)])))
+                           for i in range(n_splits)]
+        elif isinstance(clf, Pipeline) and isinstance(clf['baam'], MotherNetAdditiveClassifier):
+            record['bin_edges'] = [dict(zip(column_names, scores['estimator'][i].steps[-1][1].bin_edges_)) for i in
+                                   range(n_splits)]
+            record['w'] = [dict(zip(column_names, scores['estimator'][i].steps[-1][1].w_)) for i in range(n_splits)]
+        else:
+            print('Shape function not implemented for this model class.')
+
+    return record
+
+
+def process_model(clf, name, X, y, X_test, y_test, n_splits=3, test_size=0.05, n_jobs=None, column_names=None,
                   train_size=None,
                   record_shape_functions=False):
     # Evaluate model

@@ -6,7 +6,7 @@ import pandas as pd
 import scienceplots  # noqa
 import seaborn as sns
 import torch
-from interpret.glassbox import ExplainableBoostingClassifier
+from interpret.glassbox import ExplainableBoostingClassifier, ExplainableBoostingRegressor
 from sklearn.compose import ColumnTransformer
 from sklearn.datasets import make_classification
 from sklearn.model_selection import train_test_split
@@ -14,8 +14,8 @@ from sklearn.pipeline import Pipeline
 from sklearn.preprocessing import OrdinalEncoder, FunctionTransformer
 from sklearn.utils import resample
 
-from benchmark_node_gam_datasets import process_model
-from mothernet.prediction import MotherNetAdditiveClassifier
+from benchmark_node_gam_datasets import process_model, process_regression_model
+from mothernet.prediction import MotherNetAdditiveClassifier, MotherNetAdditiveRegressor
 from mothernet.utils import get_mn_model
 
 plt.style.use(['science', 'no-latex', 'light'])
@@ -46,6 +46,43 @@ def eval_gamformer_and_ebm(dataset_name, X, y, X_test, y_test, column_names, ct=
     '''
     baam = MotherNetAdditiveClassifier(device='cpu', path=model_path)
     record = process_model(
+        baam, 'baam',
+        X, y, X_test, y_test,
+        n_splits=n_splits, n_jobs=1, record_shape_functions=record_shape_functions,
+        column_names=column_names
+    )
+    print(record)
+    record.update(summary_record)
+    records.append(record)
+    return records
+
+
+def eval_gamformer_and_ebm_regression(dataset_name, X, y, X_test, y_test, column_names, ct=None, n_splits=3, random_state=1337,
+                           record_shape_functions=False):
+    records = []
+    summary_record = {}
+    summary_record['dataset_name'] = dataset_name
+    # Main effects only EBM
+    ebm_inter = ExplainableBoostingRegressor(n_jobs=-1, random_state=random_state, interactions=0,
+                                             feature_names=column_names)
+    record = process_regression_model(ebm_inter, 'ebm-main-effects', X, y, X_test, y_test, n_splits=n_splits,
+                           record_shape_functions=record_shape_functions)
+    print(record)
+    record.update(summary_record)
+    records.append(record)
+    # No pipeline for BAAM
+    model_string = "baam_classificationtaskFalse_Daverage_maxnumclasses0_nsamples500_numfeatures20_numfeaturessamplerdouble_sample_yencoderlinear_06_05_2024_18_15_34_epoch_1110.cpkt"
+    model_path = get_mn_model(model_string)
+    '''
+    baam = Pipeline([
+        ('identity', FunctionTransformer()),
+        # n_estimators updated from 10 to 100 due to sci-kit defaults changing in future versions
+        ('baam', MotherNetAdditiveClassifier(device='cpu', path=model_path)),
+    ])
+    '''
+    baam = MotherNetAdditiveRegressor(device='cuda' if torch.cuda.is_available() else 'cpu',
+                                      inference_device='cuda' if torch.cuda.is_available() else 'cpu', path=model_path)
+    record = process_regression_model(
         baam, 'baam',
         X, y, X_test, y_test,
         n_splits=n_splits, n_jobs=1, record_shape_functions=record_shape_functions,

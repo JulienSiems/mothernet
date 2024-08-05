@@ -1061,6 +1061,33 @@ def fetch_SARCOS(path='./data/', fold=0, target_id=None):
     return result
 
 
+def fetch_CALIFORNIAHOUSING(path='./data/', fold=0):
+    """Download California Housing dataset.
+    Args:
+    """
+    housing = pd.read_csv('datasets/housing.csv')
+    target_column = 'median_house_value'
+    X_df = housing.drop(columns=[target_column])
+
+    # Replace '_' and Capitalize first letters in feature columns
+    X_df.columns = [col.replace('_', ' ').title() for col in X_df.columns]
+    y_df = housing[target_column]
+
+    ocean_dict = {'NEAR OCEAN': 0, 'ISLAND': 1, 'NEAR BAY': 2, '<1H OCEAN': 3, 'INLAND': 4}
+    X_df['Ocean Proximity'] = X_df['Ocean Proximity'].map(ocean_dict)
+
+    # split into train and test
+    X_train, X_test, y_train, y_test = train_test_split(X_df, y_df, test_size=0.2, random_state=42)
+
+    cat_features = []
+    return dict(
+        X_train=X_train, y_train=y_train,
+        X_test=X_test, y_test=y_test,
+        problem='regression',
+        cat_features=cat_features,
+    )
+
+
 DATASETS = {
     # NODE (large) datasets
     'EPSILON': fetch_EPSILON,
@@ -1070,6 +1097,7 @@ DATASETS = {
     'MICROSOFT': fetch_MICROSOFT,
     'YAHOO': fetch_YAHOO,
     'CLICK': fetch_CLICK,
+    'CALIFORNIAHOUSING': fetch_CALIFORNIAHOUSING,
     # The rest are GAMs (medium) datasets
     'MIMIC2': fetch_MIMIC2,
     'COMPAS': fetch_COMPAS,
@@ -1094,4 +1122,4 @@ DATASETS = {
 
 
 if __name__ == '__main__':
-    fetch_WINE()
+    fetch_CALIFORNIAHOUSING()

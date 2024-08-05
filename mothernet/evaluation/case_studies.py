@@ -12,7 +12,7 @@ from scipy.special import expit as sigmoid
 from sklearn.model_selection import train_test_split
 
 from mothernet.datasets import linear_correlated_logistic_regression
-from mothernet.evaluation.imbalanced_data import eval_gamformer_and_ebm
+from mothernet.evaluation.imbalanced_data import eval_gamformer_and_ebm, eval_gamformer_and_ebm_regression
 from mothernet.evaluation.node_gam_data import DATASETS
 from mothernet.evaluation.plot_shape_function import plot_individual_shape_function
 
@@ -34,17 +34,18 @@ def scaling_analysis(model_string: str, dataset: str):
                                                                   train_size=0.8, random_state=42)
     # Iterate over dataset sizes and sample multiple datasets per size to get an average
     results_dict = defaultdict(list)
-    for size in np.linspace(100, len(X_train_full) * 0.95, 15):
+    for size in np.linspace(100, 8000, 10):
         ratio = size / X_train_full.shape[0]
-        for i in range(3):
+        for i in range(5):
             X_train_sub, _, y_train_sub, _ = train_test_split(
-                X_train_full, y_train_full, train_size=ratio, random_state=42 + i)
+                X_train_full, y_train_full, train_size=ratio, random_state=666 + i)
 
-            res = eval_gamformer_and_ebm('scaling_analysis', X_train_sub, y_train_sub, X_test, y_test,
-                                         column_names=data['X_train'].columns, n_splits=1)
+            res = eval_gamformer_and_ebm_regression('scaling_analysis',
+                                                    X_train_sub, y_train_sub, X_test, y_test,
+                                                    column_names=data['X_train'].columns, n_splits=1)
             results_dict['size'].extend([size, size])
-            results_dict['AUC-ROC'].extend([res[0]['test_node_gam_bagging'], res[1]['test_node_gam_bagging']])
-            results_dict['Model'].extend(['EBM', 'GAMFormer'])
+            results_dict['RMSE'].extend([res[0]['test_node_gam_bagging'], res[1]['test_node_gam_bagging']])
+            results_dict['Model'].extend(['EBM', 'GAMformer'])
             json.dump(results_dict, open(f"output/{dataset}/scaling_analysis_results_{time_stamp}.json", "w"))
 
             print(
@@ -54,19 +55,27 @@ def scaling_analysis(model_string: str, dataset: str):
 
 
 def plot_shape_functions(model_string: str, dataset: str):
+
     data = DATASETS[dataset]()
 
     X_train = data['X_train']
     y_train = data['y_train']
     X_test = data['X_test']
     y_test = data['y_test']
+    is_regression = data['problem'] == 'regression'
 
-    # X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, random_state=42, train_size=0.95)
-    results = eval_gamformer_and_ebm(dataset, X_train, y_train, X_test, y_test, n_splits=30,
-                                     column_names=data['X_train'].columns, record_shape_functions=True)
+    if is_regression:
+        # X_train, X_test, y_train, y_test = train_test_split(X_train, y_train, random_state=42, train_size=0.95)
+        results = eval_gamformer_and_ebm_regression(dataset, X_train, y_train, X_test, y_test, n_splits=10,
+                                         column_names=data['X_train'].columns, record_shape_functions=True)
+    else:
+        results = eval_gamformer_and_ebm(dataset, X_train, y_train, X_test, y_test, n_splits=30,
+                                         column_names=data['X_train'].columns, record_shape_functions=True)
     time_stamp = datetime.now().strftime("%m_%d_%Y_%H_%M_%S")
     os.makedirs(f'output/{dataset}', exist_ok=True)
     pickle.dump(results, open(f"output/{dataset}/shape_function_results_{time_stamp}.pkl", "wb"))
+
+    results = pickle.load(open('/Users/siemsj/projects/mothernet/output/CALIFORNIAHOUSING/shape_function_results_08_02_2024_17_56_26.pkl', 'rb'))
     # Plot shape function per feature
     feature_columns_non_constant = []
     for feature_name in X_train.columns:
@@ -75,10 +84,54 @@ def plot_shape_functions(model_string: str, dataset: str):
     plot_individual_shape_function(models={'EBM': {'bin_edges': results[0]['bin_edges'], 'w': results[0]['w']},
                                            'GAMformer': {'bin_edges': results[1]['bin_edges'], 'w': results[1]['w']}},
                                    data_density=results[0]['data_density'][0],
-                                   feature_names=feature_columns_non_constant, X_train=X_train, dataset_name=dataset)
+                                   feature_names=feature_columns_non_constant, X_train=X_train, dataset_name=dataset,
+                                   is_regression=is_regression)
 
 
 def toy_datasets():
+    # Dataset with increasing number of categorical features
+    n_features = 20
+    n_splits = 3
+    column_names = [fr'$x_{i}$' for i in range(n_features)]
+
+    num_categorical_features = []
+    test_roc_auc = []
+    model = []
+    shuffle = True
+    for i in range(2, n_features + 1):
+        X, y = linear_correlated_logistic_regression(
+            n_features=n_features, n_tasks=1, n_datapoints=500, sampling_correlation=0.0)
+        for j in range(i):
+            x_shuffle = (X[:, j] * 5).astype(np.int32)
+            if shuffle:
+                np.random.shuffle(x_shuffle)
+                X[:, j] = x_shuffle
+            else:
+                values = np.unique(x_shuffle)
+                np.random.shuffle(values)
+                replace_dict = {k: v for k, v in zip(np.unique(x_shuffle), values)}
+                X[:, j] = np.array(list(map(lambda k: replace_dict[k], x_shuffle.tolist())))
+
+        X_train, X_test, y_train, y_test = train_test_split(X, y, random_state=42)
+        results = eval_gamformer_and_ebm('logistic regression', X_train, y_train, X_test, y_test,
+                                         n_splits=n_splits, column_names=column_names, record_shape_functions=True)
+        # Add EBM results
+        num_categorical_features.extend([i] * n_splits)
+        test_roc_auc.extend(results[0]['test_node_gam_scores'])
+        model.extend(['EBM'] * n_splits)
+
+        num_categorical_features.extend([i] * n_splits)
+        test_roc_auc.extend(results[1]['test_node_gam_scores'])
+        model.extend(['GAMformer'] * n_splits)
+
+    df = pd.DataFrame.from_dict(
+        {'Num. Cat. Features': num_categorical_features, 'ROC AUC': test_roc_auc, 'Model': model})
+
+    import seaborn as sns
+    sns.lineplot(x='Num. Cat. Features', y='ROC AUC', hue='Model', data=df)
+    plt.tight_layout()
+    plt.show()
+
     # logistic regression
     column_names = [r'$x_1$', r'$x_2$', r'$x_3$']
     X, y = linear_correlated_logistic_regression(
@@ -108,9 +161,29 @@ def toy_datasets():
 
 
 if __name__ == '__main__':
+    '''
+    # Create the plot
+    df = pd.DataFrame.from_dict(json.load(open('/Users/siemsj/projects/mothernet/output/CALIFORNIAHOUSING/scaling_analysis_results_08_03_2024_14_54_07.json', 'r')))
+    plt.figure(figsize=(12, 8))
+    sns.scatterplot(data=df, x='size', y='RMSE', hue='Model', style='Model', s=50)
+    
+    # Customize the plot
+    plt.title('Individual RMSE vs Size for Different Models')
+    plt.xlabel('Size')
+    plt.ylabel('RMSE')
+    
+    # Add a legend
+    plt.legend(title='Model', bbox_to_anchor=(1.05, 1), loc='upper left')
+    
+    # Show the plot
+    plt.tight_layout()
+    plt.show()
+    '''
     model_string = "baam_nsamples500_numfeatures10_04_07_2024_17_04_53_epoch_1780.cpkt"
     # Run Toy Datasets
-    toy_datasets()
+    # toy_datasets()
     # Shape Function Visualization
-    for dataset in ['MIMIC2', 'MIMIC3', 'ADULT', 'SUPPORT2']:
+    for dataset in ['CALIFORNIAHOUSING', 'MIMIC2', 'MIMIC3', 'ADULT', 'SUPPORT2']:
         plot_shape_functions(model_string, dataset)
+    for dataset in ['CALIFORNIAHOUSING', 'MIMIC2', 'MIMIC3', 'ADULT', 'SUPPORT2']:
+        scaling_analysis(model_string, dataset)

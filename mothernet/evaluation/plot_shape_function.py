@@ -6,11 +6,11 @@ from scipy.stats import gaussian_kde
 plt.rcParams["figure.constrained_layout.use"] = True
 
 
-def plot_individual_shape_function(models, data_density, dataset_name, feature_names=None, X_train=None):
+def plot_individual_shape_function(models, data_density, dataset_name, feature_names=None, X_train=None, is_regression=False):
     colors = {'GAMformer': 'red', 'EBM': 'blue'}
     for feature_idx, feature_name in enumerate(feature_names):
         print(f'Plotting shape function for feature {feature_name}')
-        fig, axs_baam = plt.subplots(1, 1, figsize=(2. * 2, 1.85 * 1))
+        fig, axs_baam = plt.subplots(1, 1, figsize=(2. * 2.6, 1.85 * 1))
         from mpl_toolkits.axes_grid1.inset_locator import inset_axes
 
         ax_density = inset_axes(axs_baam, width="100%", height="25%", loc='lower center',
@@ -52,7 +52,10 @@ def plot_individual_shape_function(models, data_density, dataset_name, feature_n
                     raise NotImplementedError('Only EBM and GAMformer are supported')
                 w = np.array(w)
                 if model_name == 'GAMformer':
-                    w = w[:, 1]
+                    if w.shape[1] > 1:
+                        w = w[:, 1]
+                    else:
+                        w = w[:, 0]
                 bin_edges = np.array(bin_edges)
                 if X_train[feature_name].dtype == 'O' or len(X_train[feature_name].unique()) < 64:
                     # categorical
@@ -89,9 +92,12 @@ def plot_individual_shape_function(models, data_density, dataset_name, feature_n
                     weights_normalized = np.concatenate([weights_normalized, [weights_normalized[-1]]])
                     ax.step(bin_edges, weights_normalized, label=model_name, c=colors[model_name],
                             alpha=1 / len(model['bin_edges']))
-
-        axs_baam.set_ylabel(f'Log-Odds\n(GAMFormer)')
-        axs_ebm.set_ylabel(f'Log-Odds\n(EBM)')
+        if is_regression:
+            axs_ebm.set_ylabel(f'EBM')
+            axs_baam.set_ylabel(f'GAMformer')
+        else:
+            axs_baam.set_ylabel(f'Log-Odds\n(GAMformer)')
+            axs_ebm.set_ylabel(f'Log-Odds\n(EBM)')
         axs_baam.set_xlabel(feature_name)
 
         # Create a dictionary of custom legend handles with full opacity
